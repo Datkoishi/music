@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowRight, ListMusic, Music2, Play } from 'lucide-react';
 import { api, art, type Album, type Artist, type Genre, type Song } from './api';
-import { Empty, Loading, SongSection } from './components';
+import { ArtistImage, Empty, Loading, SongSection } from './components';
 import { usePlayer } from './player';
 
 type GenreDetail = {
@@ -53,7 +53,7 @@ export function GenrePage() {
     <section className="section">
       <h2>Artists</h2>
       {artists.length ? <div className="artist-grid">{artists.map(artist => <Link className="artist-card" key={artist.id} to={`/artists/${artist.id}`}>
-        <div className="artist-avatar">{artist.image_path ? <img src={art(artist.image_path)} alt="" /> : artist.name.charAt(0)}</div>
+        <ArtistImage artist={artist} className="artist-avatar" />
         <h3>{artist.name}</h3><span>{artist.songCount} tracks</span>
       </Link>)}</div> : <Empty title="No artists yet" />}
     </section>

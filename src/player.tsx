@@ -1,5 +1,5 @@
 import {create} from 'zustand';
-import {useEffect,useRef} from 'react';
+import {Component,useEffect,useRef,type ReactNode} from 'react';
 import {api,media,type Song} from './api';
 import {useAuth} from './auth';
 import {SoundCloudPlayer} from './soundcloud-player';
@@ -16,6 +16,13 @@ export const usePlayer=create<PlayerState>((set,get)=>({
   setVolume:value=>{localStorage.setItem('rhythms-volume',String(value));set({volume:value,muted:false});},
   toggleMute:()=>set(s=>({muted:!s.muted})),toggleShuffle:()=>set(s=>({shuffle:!s.shuffle})),toggleRepeat:()=>set(s=>({repeat:!s.repeat})),
 }));
+/** Keeps a failing embedded player from unmounting the whole app; the player shows an error instead. */
+class PlayerBoundary extends Component<{children:ReactNode},{failed:boolean}>{
+  state={failed:false};
+  static getDerivedStateFromError(){return {failed:true};}
+  componentDidCatch(error:unknown){console.error('Embedded player failed',error);usePlayer.setState({status:'error',playing:false,error:'This track could not be played'});}
+  render(){return this.state.failed?null:this.props.children;}
+}
 const jsonPlay=(seconds:number)=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listenedSeconds:seconds})});
 
 export function PlayerController(){
@@ -28,5 +35,5 @@ export function PlayerController(){
   useEffect(()=>usePlayer.subscribe((state,prev)=>{if(state.song?.audioPath&&state.currentTime!==prev.currentTime&&Math.abs(state.currentTime-(audio.current?.currentTime||0))>1.5&&audio.current)audio.current.currentTime=state.currentTime;}),[]);
   const onTime=()=>{const el=audio.current;if(!el)return;const delta=el.currentTime-lastTime.current;if(!el.paused&&delta>0&&delta<1.5)started.current+=delta;lastTime.current=el.currentTime;usePlayer.setState({currentTime:el.currentTime,duration:el.duration||song?.durationSeconds||0});if(user&&song&&started.current>=Math.min(30,Math.max(10,Math.round((song.durationSeconds||30)*.5)))&&!reported.current){reported.current=true;void api('/songs/'+song.id+'/plays',jsonPlay(Math.round(started.current))).catch(()=>{reported.current=false;});}};
   const onEnded=()=>{const s=usePlayer.getState();if(repeat&&audio.current){audio.current.currentTime=0;void audio.current.play();}else if(s.index<s.queue.length-1)s.next();else usePlayer.setState({status:'ended',playing:false});};
-  return <><audio ref={audio} onTimeUpdate={onTime} onPlay={()=>usePlayer.setState({status:'playing',playing:true})} onPause={()=>{if(usePlayer.getState().status!=='ended')usePlayer.setState({status:'paused',playing:false});}} onWaiting={()=>usePlayer.setState({status:'buffering'})} onEnded={onEnded} onError={()=>usePlayer.setState({status:'error',playing:false,error:'Audio is unavailable'})}/>{song?.externalUrl&&<SoundCloudPlayer key={song.id} song={song} userId={user?.id||null}/>}</>;
+  return <><audio ref={audio} onTimeUpdate={onTime} onPlay={()=>usePlayer.setState({status:'playing',playing:true})} onPause={()=>{if(usePlayer.getState().status!=='ended')usePlayer.setState({status:'paused',playing:false});}} onWaiting={()=>usePlayer.setState({status:'buffering'})} onEnded={onEnded} onError={()=>usePlayer.setState({status:'error',playing:false,error:'Audio is unavailable'})}/>{song?.externalUrl&&<PlayerBoundary key={song.id}><SoundCloudPlayer song={song} userId={user?.id||null}/></PlayerBoundary>}</>;
 }

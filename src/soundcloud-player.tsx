@@ -7,6 +7,9 @@ type Widget={bind:(event:string,listener:(data?:Progress)=>void)=>void;play:()=>
 type Factory=((iframe:HTMLIFrameElement)=>Widget)&{Events:Record<'READY'|'PLAY'|'PAUSE'|'PLAY_PROGRESS'|'FINISH'|'ERROR',string>};
 declare global {interface Window {SC?:{Widget:Factory}}}
 
+/** Widget calls throw once the iframe is detached (e.g. while switching tracks); that must never break the app. */
+function safely(action:()=>void){try{action();}catch{/* The iframe is gone; nothing left to control. */}}
+
 function loadApi():Promise<Factory>{
   if(window.SC?.Widget)return Promise.resolve(window.SC.Widget);
   return new Promise((resolve,reject)=>{
@@ -53,12 +56,15 @@ export function SoundCloudPlayer({song,userId}:{song:Song;userId:string|null}){
     }).catch(()=>{if(active)usePlayer.setState({status:'error',playing:false,error:'SoundCloud controls are unavailable; use the player below'});});
     const unsubscribe=usePlayer.subscribe((state,previous)=>{
       if(!active||state.song?.id!==song.id||!ready.current||!widget.current)return;
-      if(state.currentTime!==previous.currentTime&&Math.abs(state.currentTime-lastTime.current)>1.5){widget.current.seekTo(Math.round(state.currentTime*1000));lastTime.current=state.currentTime;}
+      if(state.currentTime!==previous.currentTime&&Math.abs(state.currentTime-lastTime.current)>1.5){const current=widget.current;safely(()=>current.seekTo(Math.round(state.currentTime*1000)));lastTime.current=state.currentTime;}
     });
-    return()=>{active=false;unsubscribe();widget.current?.pause();widget.current=null;};
+    // React removes the iframe before this cleanup runs, so the widget can no longer post messages to it.
+    return()=>{active=false;unsubscribe();safely(()=>widget.current?.pause());widget.current=null;};
   },[song.id,song.durationSeconds,userId]);
-  useEffect(()=>{if(!ready.current||!widget.current)return;if(playing)widget.current.play();else widget.current.pause();},[playing]);
-  useEffect(()=>{if(ready.current)widget.current?.setVolume(muted?0:Math.round(volume*100));},[volume,muted]);
-  const src='https://w.soundcloud.com/player/?url='+encodeURIComponent(song.externalUrl!)+'&color=%23ffc928&auto_play=false&show_artwork=true';
+  useEffect(()=>{if(!ready.current||!widget.current)return;const current=widget.current;safely(()=>playing?current.play():current.pause());},[playing]);
+  useEffect(()=>{if(ready.current)safely(()=>widget.current?.setVolume(muted?0:Math.round(volume*100)));},[volume,muted]);
+  // show_teaser=false turns off SoundCloud's "Explore more music / Hear more on SoundCloud" overlay;
+  // hide_related=true stops the widget showing related tracks when a song ends (the app's own queue plays next).
+  const src='https://w.soundcloud.com/player/?url='+encodeURIComponent(song.externalUrl!)+'&color=%23ffc928&auto_play=false&show_artwork=true&show_teaser=false&hide_related=true';
   return <div className="soundcloud-embed"><div className="soundcloud-embed-label">SOUNDCLOUD · <a href={song.externalUrl!} target="_blank" rel="noreferrer">Open track ↗</a></div><iframe ref={iframe} src={src} title={'SoundCloud: '+song.title} allow="autoplay; encrypted-media" scrolling="no"/></div>;
 }

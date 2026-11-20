@@ -17,4 +17,5 @@ export function media(path:string):string;
 export function media(path:string|null|undefined):string|null|undefined;
 export function media(path:string|null|undefined){return path&&path.startsWith('/media/')?`${MEDIA_BASE}${path}`:path;}
 export function art(path:string|null|undefined){return media(path)||'/fallback.svg';}
+export function artistPicture(artist:Pick<Artist,'imagePath'|'image_path'>){return media(artist.imagePath||artist.image_path)||null;}
 export function time(seconds:number){const n=Math.floor(seconds||0);return `${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`;}
